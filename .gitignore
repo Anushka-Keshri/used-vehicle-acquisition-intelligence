@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Cpython / PyPy caches
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# CatBoost & XGBoost training artifacts/logs
+catboost_info/
+
+# Model artifacts (optional: uncomment if you do not want to push trained model binaries)
+# models/*.pkl
+# !models/.gitkeep
+
+# Processed / generated data (uncomment if you want to regenerate data locally on clone)
+data/processed/*.csv
+!data/processed/.gitkeep
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit local credentials / secrets
+.streamlit/secrets.toml
+
+# Raw dataset (license and size; not needed to run the app)
+data/raw/
