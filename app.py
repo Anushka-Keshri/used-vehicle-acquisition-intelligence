@@ -16,7 +16,7 @@ from src.profitability import (
     format_inr, format_lakh, scenario_sensitivity, select_resale_price,
 )
 
-st.set_page_config(page_title="Used-Vehicle Acquisition Intelligence", page_icon="🚗", layout="wide")
+st.set_page_config(page_title="Used-Vehicle Acquisition Intelligence", layout="wide", initial_sidebar_state="expanded")
 
 DECISION_STYLE = {ACQUIRE: ("#1b8a3b", "✅"), NEGOTIATE: ("#e29a00", "🤝"), "REJECT": ("#c62828", "⛔")}
 
@@ -41,7 +41,28 @@ st.markdown(
 @st.cache_resource(show_spinner="Loading model (first run trains it, ~30-60 seconds)...")
 def get_artifacts() -> dict[str, Any]:
     """Load the model artifacts, training the model first if the file is missing."""
-    return load_model(auto_train=True)
+    artifacts = load_model(auto_train=True)
+    try:
+        hier = artifacts.get("hierarchy", {})
+        brand = next(iter(hier)) if hier else "Hyundai"
+        models = hier.get(brand, {})
+        model = next(iter(models)) if models else "Creta"
+        variants = models.get(model, [])
+        variant = variants[0] if variants else "Standard"
+        opts = artifacts.get("options", {})
+        fuel = opts.get("fuel_type", ["Petrol"])[0]
+        trans = opts.get("transmission", ["Manual"])[0]
+        city = opts.get("city", ["Bengaluru"])[0]
+        dummy = {
+            "brand": brand, "model": model, "variant": variant,
+            "year": artifacts.get("reference_year", 2026) - 5,
+            "km_driven": artifacts.get("defaults", {}).get("km_driven", 50000.0),
+            "fuel_type": fuel, "transmission": trans, "city": city,
+        }
+        predict(dummy, artifacts)
+    except Exception:  # noqa: BLE001
+        pass
+    return artifacts
 
 
 @st.cache_data(show_spinner=False)
@@ -71,9 +92,24 @@ def build_demo(artifacts: dict[str, Any]) -> dict[str, Any]:
     """Demo scenario: 2019 Hyundai Creta, 65,000 km, Petrol, Manual, Bengaluru, ask ₹6,00,000."""
     hier, opts = artifacts["hierarchy"], artifacts["options"]
     brand = _pick(sorted(hier), "Hyundai")
-    model = _pick(sorted(hier[brand]), "Creta")
+    creta_model = _pick(sorted(hier.get(brand, {})), "Creta") if brand in hier else "Creta"
+    variants = hier.get(brand, {}).get(creta_model, [])
+
+    variant = None
+    if variants:
+        petrol_15 = [v for v in variants if "1.5" in v.lower() and "petrol" in v.lower()]
+        petrol_any = [v for v in variants if "petrol" in v.lower()]
+        if petrol_15:
+            variant = petrol_15[0]
+        elif petrol_any:
+            variant = petrol_any[0]
+        else:
+            variant = _pick(variants, "S")
+    if not variant:
+        variant = _pick(variants if variants else ["Standard"], "S")
+
     return {
-        "brand": brand, "model": model, "variant": _pick(hier[brand][model], "S"),
+        "brand": brand, "model": creta_model, "variant": variant,
         "year": min(2019, artifacts["reference_year"]), "km": 65_000,
         "fuel": _pick(opts["fuel_type"], "Petrol"), "trans": _pick(opts["transmission"], "Manual"),
         "city": _pick(opts["city"], "Bengaluru", ("Bangalore",)), "condition": "Good",
@@ -207,8 +243,7 @@ metrics = artifacts["metrics"]
 demo = build_demo(artifacts)
 
 if "initialized" not in st.session_state:
-    apply_demo(demo, evaluate=False)
-    st.session_state["evaluated"] = False
+    apply_demo(demo, evaluate=True)
     st.session_state["initialized"] = True
 
 # ------------------------------- sidebar ------------------------------------ #
@@ -216,8 +251,8 @@ with st.sidebar:
     st.header("Model performance")
     st.caption(f"Market listing-price estimator ({artifacts['backend'].title()}), held-out test set")
     c1, c2 = st.columns(2)
-    c1.metric("MAE", format_inr(metrics["mae"]))
-    c2.metric("RMSE", format_inr(metrics["rmse"]))
+    c1.metric("MAE", format_lakh(metrics["mae"]))
+    c2.metric("RMSE", format_lakh(metrics["rmse"]))
     c3, c4 = st.columns(2)
     c3.metric("R²", f"{metrics['r2']:.3f}")
     c4.metric("MAPE", f"{metrics['mape_pct']:.1f}%")
@@ -245,7 +280,7 @@ with st.sidebar:
             "- Condition is a fixed % adjustment, not learned from inspection data.")
 
 # -------------------------------- header ------------------------------------ #
-st.title("🚗 Used-Vehicle Acquisition Intelligence")
+st.title("Used-Vehicle Acquisition Intelligence")
 st.markdown('<div class="core-msg"><b>We don\'t just predict prices, we convert predictions into '
             'financial decisions.</b> A potential pre-acquisition layer for dealer workflows: '
             'what is it worth, will it be profitable, should we buy it?</div>', unsafe_allow_html=True)
@@ -258,7 +293,9 @@ if artifacts["is_synthetic"]:
                "workflow only; they are not real market prices.")
 
 # ------------------------------ 01 input ------------------------------------ #
-st.markdown("### 01 · Vehicle input")
+h1, h2 = st.columns([1, 2])
+h1.markdown("### 01 · Vehicle input")
+h2.caption("Tip: the demo car is pre-loaded. Change any input and click Evaluate Vehicle. First load can take up to a minute on free hosting.")
 hier, opts = artifacts["hierarchy"], artifacts["options"]
 cur_year = artifacts["reference_year"]
 
